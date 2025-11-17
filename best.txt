@@ -1,0 +1,12 @@
+# 1) Fix permissions so your venv python can write in the e-Paper repo
+sudo chown -R pi:pi /opt/e-Paper
+
+# 2) Install waveshare_epd into the app venv (no sudo this time)
+cd /opt/e-Paper/RaspberryPi_JetsonNano/python
+/opt/eink-mp3-player/venv/bin/python -m pip install .
+
+# 3) Make sure the music folder exists
+sudo mkdir -p /mnt/music/mp3
+
+# 4) Reboot so the service starts with the driver available
+sudo reboot
