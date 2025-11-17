@@ -715,3 +715,31 @@ cd e-Paper/RaspberryPi_JetsonNano/python/lib
 
 # Install just the 'waveshare_epd' package with pip (no easy_install)
 sudo python3 -m pip install .
+
+
+---
+
+
+
+You’re very close. The only thing that failed was that we tried to `pip install .` from the wrong subdirectory.
+
+Here are the exact commands you need to run now, in order, with no extra explanation:
+
+```bash
+cd /opt/e-Paper/RaspberryPi_JetsonNano/python
+ls
+```
+
+Check the output for a folder named `lib` or similar (for current repo it should be `lib`). Then run (assuming it is `lib`):
+
+```bash
+cd /opt/e-Paper/RaspberryPi_JetsonNano/python/lib
+sudo /opt/eink-mp3-player/venv/bin/python -m pip install .
+```
+
+Then:
+
+```bash
+sudo mkdir -p /mnt/music/mp3
+sudo reboot
+```
