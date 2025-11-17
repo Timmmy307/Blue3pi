@@ -1,22 +1,27 @@
 #!/usr/bin/env bash
 set -e
 
+# This script:
+# 1) Installs/refreshes the e-ink MP3 player
+# 2) Installs waveshare_epd INTO THE APP VENV (no system pip)
+
 APP_DIR="/opt/eink-mp3-player"
 SERVICE_NAME="eink-mp3-player.service"
 MUSIC_MOUNT="/mnt/music"
 MUSIC_DIR="${MUSIC_MOUNT}/mp3"
 
-echo "=== eInk Bluetooth MP3 Player Installer (2.13\" HAT, clean reinstall) ==="
+echo "=== Full setup: MP3 player + Waveshare driver in venv ==="
 
 if [[ $EUID -ne 0 ]]; then
-  echo "Please run as root: sudo ./install_mp3_player.sh"
+  echo "Run as root: sudo ./install_all.sh"
   exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# 0. Clean any previous install
-# ---------------------------------------------------------------------------
-echo "[0/9] Removing previous installation (if any)..."
+###############################################################################
+# PART 1: CLEAN PREVIOUS INSTALL + APP SETUP
+###############################################################################
+
+echo "[1/7] Removing previous installation (if any)..."
 
 if systemctl list-unit-files | grep -q "^${SERVICE_NAME}"; then
   systemctl stop "${SERVICE_NAME}" || true
@@ -28,10 +33,7 @@ systemctl daemon-reload || true
 
 rm -rf "${APP_DIR}"
 
-# ---------------------------------------------------------------------------
-# 1. Install packages
-# ---------------------------------------------------------------------------
-echo "[1/9] Updating apt and installing packages..."
+echo "[2/7] Installing OS packages..."
 apt-get update
 apt-get install -y \
   python3 python3-pip python3-venv python3-setuptools \
@@ -45,16 +47,8 @@ apt-get install -y \
   python3-gpiozero \
   unzip
 
-# ---------------------------------------------------------------------------
-# 2. Enable SPI for e-paper
-# ---------------------------------------------------------------------------
-echo "[2/9] Enabling SPI for e-paper..."
+echo "[3/7] Enabling SPI and basic audio..."
 raspi-config nonint do_spi 0 || true
-
-# ---------------------------------------------------------------------------
-# 3. Configure /boot config for SPI/audio
-# ---------------------------------------------------------------------------
-echo "[3/9] Configuring /boot/firmware/config.txt for e-paper and sound..."
 
 CONFIG_FILE="/boot/firmware/config.txt"
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -69,27 +63,12 @@ ensure_line() {
 ensure_line "dtparam=spi=on"
 ensure_line "dtparam=audio=on"
 
-# ---------------------------------------------------------------------------
-# 4. Bluetooth basic setup
-# ---------------------------------------------------------------------------
-echo "[4/9] Configuring Bluetooth (BlueZ + PipeWire)..."
-
+echo "[4/7] Enabling Bluetooth service..."
 systemctl enable bluetooth.service
 systemctl start bluetooth.service
 
-# NOTE: We do not run any 'systemctl --user' here to avoid DBus warnings.
-# PipeWire will run in user sessions as configured by the OS.
-
-# ---------------------------------------------------------------------------
-# 5. Create app directory
-# ---------------------------------------------------------------------------
-echo "[5/9] Creating application directory at ${APP_DIR}..."
-mkdir -p "$APP_DIR"
-
-# ---------------------------------------------------------------------------
-# 6. Write application files
-# ---------------------------------------------------------------------------
-echo "[6/9] Writing application files..."
+echo "[5/7] Creating app directory and writing files..."
+mkdir -p "${APP_DIR}"
 
 cat > "${APP_DIR}/config.py" << 'EOF'
 MUSIC_ROOT = "/mnt/music/mp3"
@@ -289,8 +268,8 @@ class Display:
     def __init__(self):
         if epd2in13_V2 is None:
             raise RuntimeError(
-                "waveshare_epd.epd2in13_V2 not installed. "
-                "Install the Waveshare e-Paper Python library first."
+                "waveshare_epd.epd2in13_V2 not installed in venv. "
+                "Check install_all.sh step that installs waveshare_epd."
             )
 
         self.epd = epd2in13_V2.EPD()
@@ -600,43 +579,24 @@ if __name__ == "__main__":
     main()
 EOF
 
-# ---------------------------------------------------------------------------
-# 7. Python venv + deps
-# ---------------------------------------------------------------------------
-echo "[7/9] Creating Python virtual environment and installing Python deps..."
-cd "$APP_DIR"
+echo "[6/7] Creating venv and installing Python deps (mutagen + waveshare_epd)..."
+cd "${APP_DIR}"
 python3 -m venv venv
-# shellcheck disable=SC1091
 source venv/bin/activate
 
 pip install --no-cache-dir mutagen
 
-# ---------------------------------------------------------------------------
-# 8. Music dir + fstab hint
-# ---------------------------------------------------------------------------
-echo "[8/9] Creating music directory and fstab hint..."
-mkdir -p "$MUSIC_DIR"
+echo "[6.1/7] Cloning Waveshare e-Paper repo (for driver source)..."
+cd /opt
+rm -rf e-Paper
+git clone https://github.com/waveshareteam/e-Paper.git
 
-FSTAB_HINT_FILE="${APP_DIR}/FSTAB_HINT.txt"
-cat > "$FSTAB_HINT_FILE" << 'EOF'
-To make MP3s easily drag-and-drop editable:
+echo "[6.2/7] Installing waveshare_epd INTO THE APP VENV..."
+cd /opt/e-Paper/RaspberryPi_JetsonNano/python/lib
+# Use the venv python/pip, not system
+"${APP_DIR}/venv/bin/python" -m pip install .
 
-1. Create a separate partition on the SD card (e.g. /dev/mmcblk0p3) formatted as exFAT or FAT32.
-2. Add a line to /etc/fstab (adjust device accordingly):
-
-   /dev/mmcblk0p3  /mnt/music  exfat  defaults,uid=1000,gid=1000  0  0
-
-3. mkdir -p /mnt/music
-4. sudo mount -a
-
-Then put your MP3 files in /mnt/music/mp3. You can safely power off the Pi,
-remove the SD card, and copy/delete MP3s on another machine.
-EOF
-
-# ---------------------------------------------------------------------------
-# 9. systemd service
-# ---------------------------------------------------------------------------
-echo "[9/9] Creating systemd service..."
+echo "[7/7] Creating systemd service..."
 
 DEFAULT_USER="$(getent passwd 1000 | cut -d: -f1 || echo pi)"
 DEFAULT_UID="$(id -u "$DEFAULT_USER" 2>/dev/null || echo 1000)"
@@ -662,14 +622,8 @@ EOF
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
-echo "=== Install script finished ==="
-echo ""
-echo "Now do:"
-echo "  1) Install Waveshare library:"
-echo "       cd /opt"
-echo "       sudo git clone https://github.com/waveshareteam/e-Paper.git"
-echo "       cd e-Paper/RaspberryPi_JetsonNano/python/lib"
-echo "       sudo python3 -m pip install ."
-echo "  2) Put MP3 files into ${MUSIC_DIR}"
-echo "  3) Reboot: sudo reboot"
-echo "After reboot the player will auto-start."
+echo "=== All done ==="
+echo "Now:"
+echo "  - Put MP3 files into ${MUSIC_DIR}"
+echo "  - Reboot with: sudo reboot"
+echo "Player will auto-start after reboot."
