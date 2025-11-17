@@ -6,17 +6,18 @@ SERVICE_NAME="eink-mp3-player.service"
 MUSIC_MOUNT="/mnt/music"
 MUSIC_DIR="${MUSIC_MOUNT}/mp3"
 
-echo "=== eInk Bluetooth MP3 Player Installer (clean reinstall) ==="
+echo "=== eInk Bluetooth MP3 Player Installer (2.13\" HAT, clean reinstall) ==="
 
 if [[ $EUID -ne 0 ]]; then
   echo "Please run as root: sudo ./install_mp3_player.sh"
   exit 1
 fi
 
-# --- 0. Clean up any previous install ---------------------------------------
-echo "[0/10] Removing previous installation (if any)..."
+# ---------------------------------------------------------------------------
+# 0. Clean any previous install
+# ---------------------------------------------------------------------------
+echo "[0/9] Removing previous installation (if any)..."
 
-# Stop and disable old service if it exists
 if systemctl list-unit-files | grep -q "^${SERVICE_NAME}"; then
   systemctl stop "${SERVICE_NAME}" || true
   systemctl disable "${SERVICE_NAME}" || true
@@ -25,11 +26,12 @@ fi
 rm -f "/etc/systemd/system/${SERVICE_NAME}"
 systemctl daemon-reload || true
 
-# Remove old app directory
 rm -rf "${APP_DIR}"
 
-# --- 1. Packages -------------------------------------------------------------
-echo "[1/10] Updating apt and installing packages..."
+# ---------------------------------------------------------------------------
+# 1. Install packages
+# ---------------------------------------------------------------------------
+echo "[1/9] Updating apt and installing packages..."
 apt-get update
 apt-get install -y \
   python3 python3-pip python3-venv python3-setuptools \
@@ -43,12 +45,16 @@ apt-get install -y \
   python3-gpiozero \
   unzip
 
-# --- 2. Enable SPI -----------------------------------------------------------
-echo "[2/10] Enabling SPI for e-paper..."
+# ---------------------------------------------------------------------------
+# 2. Enable SPI for e-paper
+# ---------------------------------------------------------------------------
+echo "[2/9] Enabling SPI for e-paper..."
 raspi-config nonint do_spi 0 || true
 
-# --- 3. Configure /boot config for SPI/audio --------------------------------
-echo "[3/10] Configuring /boot/firmware/config.txt for e-paper and sound..."
+# ---------------------------------------------------------------------------
+# 3. Configure /boot config for SPI/audio
+# ---------------------------------------------------------------------------
+echo "[3/9] Configuring /boot/firmware/config.txt for e-paper and sound..."
 
 CONFIG_FILE="/boot/firmware/config.txt"
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -63,22 +69,27 @@ ensure_line() {
 ensure_line "dtparam=spi=on"
 ensure_line "dtparam=audio=on"
 
-# --- 4. Bluetooth basic setup -----------------------------------------------
-echo "[4/10] Configuring Bluetooth (BlueZ + PipeWire)..."
+# ---------------------------------------------------------------------------
+# 4. Bluetooth basic setup
+# ---------------------------------------------------------------------------
+echo "[4/9] Configuring Bluetooth (BlueZ + PipeWire)..."
 
 systemctl enable bluetooth.service
 systemctl start bluetooth.service
 
-# NOTE: On Lite, PipeWire user services are usually started in an actual
-# user session. We will rely on default audio routing; no systemctl --user
-# calls here, they caused DBus errors when run as root.
+# NOTE: We do not run any 'systemctl --user' here to avoid DBus warnings.
+# PipeWire will run in user sessions as configured by the OS.
 
-# --- 5. App directory --------------------------------------------------------
-echo "[5/10] Creating application directory at ${APP_DIR}..."
+# ---------------------------------------------------------------------------
+# 5. Create app directory
+# ---------------------------------------------------------------------------
+echo "[5/9] Creating application directory at ${APP_DIR}..."
 mkdir -p "$APP_DIR"
 
-# --- 6. Write application files ---------------------------------------------
-echo "[6/10] Writing application files..."
+# ---------------------------------------------------------------------------
+# 6. Write application files
+# ---------------------------------------------------------------------------
+echo "[6/9] Writing application files..."
 
 cat > "${APP_DIR}/config.py" << 'EOF'
 MUSIC_ROOT = "/mnt/music/mp3"
@@ -589,8 +600,10 @@ if __name__ == "__main__":
     main()
 EOF
 
-# --- 7. Python venv + deps ---------------------------------------------------
-echo "[7/10] Creating Python virtual environment and installing Python deps..."
+# ---------------------------------------------------------------------------
+# 7. Python venv + deps
+# ---------------------------------------------------------------------------
+echo "[7/9] Creating Python virtual environment and installing Python deps..."
 cd "$APP_DIR"
 python3 -m venv venv
 # shellcheck disable=SC1091
@@ -598,8 +611,10 @@ source venv/bin/activate
 
 pip install --no-cache-dir mutagen
 
-# --- 8. Music dir + fstab hint ----------------------------------------------
-echo "[8/10] Creating music directory and fstab hint..."
+# ---------------------------------------------------------------------------
+# 8. Music dir + fstab hint
+# ---------------------------------------------------------------------------
+echo "[8/9] Creating music directory and fstab hint..."
 mkdir -p "$MUSIC_DIR"
 
 FSTAB_HINT_FILE="${APP_DIR}/FSTAB_HINT.txt"
@@ -618,8 +633,10 @@ Then put your MP3 files in /mnt/music/mp3. You can safely power off the Pi,
 remove the SD card, and copy/delete MP3s on another machine.
 EOF
 
-# --- 9. systemd service ------------------------------------------------------
-echo "[9/10] Creating systemd service..."
+# ---------------------------------------------------------------------------
+# 9. systemd service
+# ---------------------------------------------------------------------------
+echo "[9/9] Creating systemd service..."
 
 DEFAULT_USER="$(getent passwd 1000 | cut -d: -f1 || echo pi)"
 DEFAULT_UID="$(id -u "$DEFAULT_USER" 2>/dev/null || echo 1000)"
@@ -645,14 +662,14 @@ EOF
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
-echo "[10/10] Done."
+echo "=== Install script finished ==="
 echo ""
-echo "Next steps:"
-echo "1. Install Waveshare e-Paper Python library:"
-echo "     cd /opt"
-echo "     sudo git clone https://github.com/waveshareteam/e-Paper.git"
-echo "     cd e-Paper/RaspberryPi_JetsonNano/python"
-echo "     sudo python3 setup.py install"
-echo "2. Copy MP3 files into ${MUSIC_DIR}."
-echo "3. Reboot: sudo reboot"
-echo "After boot, the player will auto-start."
+echo "Now do:"
+echo "  1) Install Waveshare library:"
+echo "       cd /opt"
+echo "       sudo git clone https://github.com/waveshareteam/e-Paper.git"
+echo "       cd e-Paper/RaspberryPi_JetsonNano/python/lib"
+echo "       sudo python3 -m pip install ."
+echo "  2) Put MP3 files into ${MUSIC_DIR}"
+echo "  3) Reboot: sudo reboot"
+echo "After reboot the player will auto-start."
