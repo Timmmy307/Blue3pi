@@ -703,4 +703,15 @@ sudo reboot
 - `Space` – play/pause
 - `Q` – quit (systemd will restart the service)
 
-If you want, I can next add a separate file to listen for headset AVRCP buttons (play/pause/next/prev) so you don’t need a keyboard for normal use.
+
+
+---
+
+
+cd /opt
+sudo rm -rf e-Paper
+sudo git clone https://github.com/waveshareteam/e-Paper.git
+cd e-Paper/RaspberryPi_JetsonNano/python/lib
+
+# Install just the 'waveshare_epd' package with pip (no easy_install)
+sudo python3 -m pip install .
